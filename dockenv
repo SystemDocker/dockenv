@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/bin/bash -e
+
+if [ "${DEBUG,,}" == "true" ]; then
+  set -x
+fi
 
 # Initialise the DOCKER_CMDOPTS
 DOCKER_CMDOPTS=($DOCKER_CMDOPTS)
