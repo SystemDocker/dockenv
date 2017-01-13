@@ -49,11 +49,11 @@ if [ $# -lt 1 ]; then
 fi
 
 # First keyword should be the docker command
-DOCKER_CMD=$1
+DOCKER_CMD=("$1")
 shift
 
 # Determine what the command options are
-case ${DOCKER_CMD} in
+case "${DOCKER_CMD[0]}" in
   run)
     env_to_docker_cmd_opts '--add-host' 'DOCKER_ADD_HOST_.*'
     env_to_docker_cmd_flag '--attach=STDIN' 'DOCKER_ATTACH_STDIN' # TODO: Test an ensure multiple are allowed in this way.
@@ -146,9 +146,37 @@ case ${DOCKER_CMD} in
     env_to_docker_cmd_opts '--volumes-from' 'DOCKER_VOLUMES_FROM_.*'
     env_to_docker_cmd_opts '--workdir' 'DOCKER_WORKDIR'
     ;;
+  network)
+    DOCKER_CMD+=("$1")
+    shift
+    case "${DOCKER_CMD[1]}" in
+      create)
+        # TODO: Support DOCKER_NETWORK_${DOCKER_NETWORK}_*
+        env_to_docker_cmd_opts '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS'
+        env_to_docker_cmd_opts '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS_.*'
+        env_to_docker_cmd_opts '--driver' 'DOCKER_NETWORK_DRIVER'
+        env_to_docker_cmd_opts '--gateway' 'DOCKER_NETWORK_GATEWAY'
+        env_to_docker_cmd_opts '--gateway' 'DOCKER_NETWORK_GATEWAY_.*'
+        env_to_docker_cmd_flag '--internal' 'DOCKER_NETWORK_INTERNAL'
+        env_to_docker_cmd_opts '--ip-range' 'DOCKER_NETWORK_IP_RANGE'
+        env_to_docker_cmd_opts '--ip-range' 'DOCKER_NETWORK_IP_RANGE_.*'
+        env_to_docker_cmd_opts '--ipam-driver' 'DOCKER_NETWORK_IPAM_DRIVER'
+        env_to_docker_cmd_opts '--ipam-opt' 'DOCKER_NETWORK_IPAM_OPT_.*'
+        env_to_docker_cmd_flag '--ipv6' 'DOCKER_NETWORK_IPV6'
+        env_to_docker_cmd_opts '--label' 'DOCKER_NETWORK_LABEL'
+        env_to_docker_cmd_opts '--label' 'DOCKER_NETWORK_LABEL_.*'
+        env_to_docker_cmd_opts '--opt' 'DOCKER_NETWORK_OPT_.*'
+        env_to_docker_cmd_opts '--subnet' 'DOCKER_NETWORK_SUBNET'
+        env_to_docker_cmd_opts '--subnet' 'DOCKER_NETWORK_SUBNET_.*'
+        ;;
+      *)
+        >&2 echo "dockenv warning: command not supported, passing to docker as is."
+        ;;
+    esac
+    ;;
   *)
-    >&2 echo "dockenv warning: command not supported, passing to docker."
+    >&2 echo "dockenv warning: command not supported, passing to docker as is."
     ;;
 esac
 
-exec docker "${DOCKER_CMD}" "${DOCKER_CMDOPTS[@]}" "$@"
+exec docker "${DOCKER_CMD[@]}" "${DOCKER_CMDOPTS[@]}" "$@"
