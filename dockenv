@@ -5,40 +5,54 @@ if [ "${DEBUG,,}" == "true" ]; then
   export
 fi
 
-# Initialise the DOCKER_CMDOPTS
+# Initialise DOCKER_OPTS and DOCKER_CMDOPTS
+DOCKER_OPTS=($DOCKER_OPTS)
 DOCKER_CMDOPTS=($DOCKER_CMDOPTS)
 
 # Declare functions
 
-get_variables_with_pattern() {
+grep_variables() {
   compgen -A variable | grep "$@"
 }
 
-env_to_docker_cmd_opts() {
+env_to_opts() {
   # Check there are enough arguments
-  if [ $# -lt 2 ]; then
-    >&2 echo "Usage: env_to_docker_cmd_opts [flag] [pattern]"
+  if [ $# -lt 3 ]; then
+    >&2 echo "Usage: env_to_opts [array] [flag] [pattern]"
   fi
   # Find all variables matching the pattern and add to command options with provided flag
-  for VAR in $(get_variables_with_pattern -x "$2"); do
+  for VAR in $(grep_variables -x "$3"); do
     if [ -n "${!VAR}" ]; then
-      DOCKER_CMDOPTS+=("$1" "${!VAR}")
+      eval $1+=\(\"$2\" \"${!VAR}\"\)
     fi
   done
 }
 
-env_to_docker_cmd_flag(){
+env_to_flag(){
   # Check there are enough arguments
-  if [ $# -lt 2 ]; then
-    >&2 echo "Usage: env_to_docker_cmd_flag [flag] [variable]"
+  if [ $# -lt 3 ]; then
+    >&2 echo "Usage: env_to_flag [array] [flag] [variable]"
   fi
   # If the variable is set to 'true' or 'yes' then set the provided flag
-  if [ "${!2,,}" == "true" ] || [ "${!2,,}" == "yes" ]; then
-    DOCKER_CMDOPTS+=("$1")
+  if [ "${!3,,}" == "true" ] || [ "${!3,,}" == "yes" ]; then
+    eval $1+=\(\"$2\"\)
   fi
 }
 
-# Set the docker options
+# Set the docker options from environment
+env_to_flag 'DOCKER_OPTS' '--debug' 'DOCKER_DEBUG'
+env_to_opts 'DOCKER_OPTS' '--log-level' 'DOCKER_LOG_LEVEL'
+env_to_flag 'DOCKER_OPTS' '--tls' 'DOCKER_TLS'
+env_to_flag 'DOCKER_OPTS' '--tlscacert' 'DOCKER_TLS_CACERT'
+env_to_flag 'DOCKER_OPTS' '--tlscert' 'DOCKER_TLS_CERT'
+env_to_flag 'DOCKER_OPTS' '--tlskey' 'DOCKER_TLS_KEY'
+
+# Allow command line flag pass through (caveat, cannot use spaces: should use `--a=b` syntax)
+while [ "${1:0:1}" == "-" ]; do
+  DOCKER_OPTS+=("$1")
+  shift
+done
+
 # TODO: Implement DOCKER_OPTS
 # TODO: Add all arguments that start with '-' to DOCKER_OPTS and shift so DOCKER_CMD gets set correctly
 # TODO: How to handle '--config ~/.docker'
@@ -48,126 +62,129 @@ if [ $# -lt 1 ]; then
   exec docker
 fi
 
-# First keyword should be the docker command
+# Set the first part of the command
 DOCKER_CMD=("$1")
 shift
 
 # Determine what the command options are
 case "${DOCKER_CMD[0]}" in
   run)
-    env_to_docker_cmd_opts '--add-host' 'DOCKER_ADD_HOST_.*'
-    env_to_docker_cmd_flag '--attach=STDIN' 'DOCKER_ATTACH_STDIN' # TODO: Test an ensure multiple are allowed in this way.
-    env_to_docker_cmd_flag '--attach=STDOUT' 'DOCKER_ATTACH_STDOUT'
-    env_to_docker_cmd_flag '--attach=STDERR' 'DOCKER_ATTACH_STDERR'
-    env_to_docker_cmd_opts '--blkio-weight' 'DOCKER_BLKIO_WEIGHT'
-    env_to_docker_cmd_opts '--blkio-weight-device' 'DOCKER_BLKIO_WEIGHT_DEVICE_.*'
-    env_to_docker_cmd_opts '--cap-add' 'DOCKER_CAP_ADD_.*'
-    env_to_docker_cmd_opts '--cap-drop' 'DOCKER_CAP_DROP_.*'
-    env_to_docker_cmd_opts '--cgroup-parent' 'DOCKER_CGROUP_PARENT'
-    env_to_docker_cmd_opts '--cidfile' 'DOCKER_CIDFILE'
-    # env_to_docker_cmd_opts '--cpu-percent' 'DOCKER_CPU_PERCENT' # Windows Only
-    env_to_docker_cmd_opts '--cpu-period' 'DOCKER_CPU_PERIOD'
-    env_to_docker_cmd_opts '--cpu-quota' 'DOCKER_CPU_QUOTA'
-    env_to_docker_cmd_opts '--cpu-shares' 'DOCKER_CPU_SHARES'
-    env_to_docker_cmd_opts '--cpuset-cpus' 'DOCKER_CPUSET_CPUS'
-    env_to_docker_cmd_opts '--cpuset-mems' 'DOCKER_CPUSET_MEMS'
-    env_to_docker_cmd_flag '--detach' 'DOCKER_DETACH'
-    env_to_docker_cmd_opts '--detach-keys' 'DOCKER_DETACH_KEYS'
-    env_to_docker_cmd_opts '--device' 'DOCKER_DEVICE_.*'
-    env_to_docker_cmd_opts '--device-read-bps' 'DOCKER_READ_BPS_.*'
-    env_to_docker_cmd_opts '--device-read-iops' 'DOCKER_READ_IOPS_.*'
-    env_to_docker_cmd_opts '--device-write-bps' 'DOCKER_WRITE_BPS_.*'
-    env_to_docker_cmd_opts '--device-write-iops' 'DOCKER_WRITE_IOPS_.*'
-    env_to_docker_cmd_flag '--disable-content-trust=false' 'DOCKER_CONTENT_TRUST' # Reversed logic since default is true
-    env_to_docker_cmd_opts '--dns' 'DOCKER_DNS'
-    env_to_docker_cmd_opts '--dns' 'DOCKER_DNS_.*'
-    env_to_docker_cmd_opts '--dns-opt' 'DOCKER_DNS_OPT_.*'
-    env_to_docker_cmd_opts '--dns-search' 'DOCKER_DNS_SEARCH_.*'
-    env_to_docker_cmd_opts '--entrypoint' 'DOCKER_ENTRYPOINT'
-    env_to_docker_cmd_opts '--env' 'DOCKER_ENV_.*'
-    env_to_docker_cmd_opts '--env-file' 'DOCKER_ENV_FILE'
-    env_to_docker_cmd_opts '--env-file' 'DOCKER_ENV_FILE_.*'
-    env_to_docker_cmd_opts '--expose' 'DOCKER_EXPOSE_.*'
-    env_to_docker_cmd_opts '--group-add' 'DOCKER_GROUP_ADD_.*'
-    env_to_docker_cmd_opts '--health-cmd' 'DOCKER_HEALTH_CMD'
-    env_to_docker_cmd_opts '--health-interval' 'DOCKER_HEALTH_INTERVAL'
-    env_to_docker_cmd_opts '--health-retries' 'DOCKER_HEALTH_RETRIES'
-    env_to_docker_cmd_opts '--health-timeout' 'DOCKER_HEALTH_TIMEOUT'
-    env_to_docker_cmd_opts '--hostname' 'DOCKER_HOSTNAME'
-    env_to_docker_cmd_flag '--interactive' 'DOCKER_INTERACTIVE'
-    # env_to_docker_cmd_opts '--io-maxbandwidth' 'DOCKER_IO_MAXBANDWIDTH' # Windows Only
-    # env_to_docker_cmd_opts '--io-maxiops' 'DOCKER_IO_MAXIOPS' # Windows Only
-    env_to_docker_cmd_opts '--ip' 'DOCKER_IP'
-    env_to_docker_cmd_opts '--ip6' 'DOCKER_IP6'
-    env_to_docker_cmd_opts '--ipc' 'DOCKER_IPC'
-    env_to_docker_cmd_flag '--isolation' 'DOCKER_ISOLATION'
-    env_to_docker_cmd_opts '--kernel-memory' 'DOCKER_KERNEL_MEMORY'
-    env_to_docker_cmd_opts '--label' 'DOCKER_LABEL_.*'
-    env_to_docker_cmd_opts '--label-file' 'DOCKER_LABEL_FILE'
-    env_to_docker_cmd_opts '--label-file' 'DOCKER_LABEL_FILE_.*'
-    env_to_docker_cmd_opts '--link' 'DOCKER_LINK_.*'
-    env_to_docker_cmd_opts '--link-local-ip' 'DOCKER_LINKLOCAL_IP_.*' # _ droped to remove conflict/abiguity
-    env_to_docker_cmd_opts '--log-driver' 'DOCKER_LOG_DRIVER'
-    env_to_docker_cmd_opts '--log-opt' 'DOCKER_LOG_OPT'
-    env_to_docker_cmd_opts '--mac-address' 'DOCKER_MAC_ADDRESS'
-    env_to_docker_cmd_opts '--memory' 'DOCKER_MEMORY'
-    env_to_docker_cmd_opts '--memory-reservation' 'DOCKER_MEMORY_RESERVATION'
-    env_to_docker_cmd_opts '--memory-swap' 'DOCKER_MEMORY_SWAP'
-    env_to_docker_cmd_opts '--memory-swappiness' 'DOCKER_MEMORY_SWAPPINESS'
-    env_to_docker_cmd_opts '--name' 'DOCKER_NAME'
-    env_to_docker_cmd_opts '--network-alias' 'DOCKER_NETWORK_ALIAS_.*'
-    env_to_docker_cmd_opts '--net' 'DOCKER_NETWORK'
-    env_to_docker_cmd_flag '--no-healthcheck' 'DOCKER_NO_HEALTHCHECK'
-    env_to_docker_cmd_flag '--oom-kill-disable' 'DOCKER_OOM_KILL_DISABLE'
-    env_to_docker_cmd_opts '--oom-score-adj' 'DOCKER_OOM_SCORE_ADJ'
-    env_to_docker_cmd_opts '--pid' 'DOCKER_PID'
-    env_to_docker_cmd_opts '--pids-limit' 'DOCKER_PIDS_LIMIT'
-    env_to_docker_cmd_flag '--privileged' 'DOCKER_PRIVILEGED'
-    env_to_docker_cmd_opts '--publish' 'DOCKER_PUBLISH_.*'
-    env_to_docker_cmd_flag '--publish-all' 'DOCKER_PUBLISHALL' # _ droped to remove conflict/abiguity
-    env_to_docker_cmd_flag '--read-only' 'DOCKER_READ_ONLY'
-    env_to_docker_cmd_opts '--restart' 'DOCKER_RESTART'
-    env_to_docker_cmd_flag '--rm' 'DOCKER_RM'
-    env_to_docker_cmd_opts '--runtime' 'DOCKER_RUNTIME'
-    env_to_docker_cmd_opts '--security-opt' 'DOCKER_SECURITY_OPT_.*'
-    env_to_docker_cmd_opts '--shm-size' 'DOCKER_SHM_SIZE'
-    env_to_docker_cmd_flag '--sig-proxy=false' 'DOCKER_DISABLE_SIG_PROXY' # Reversed logic since default is true
-    env_to_docker_cmd_opts '--stop-signal' 'DOCKER_STOP_SIGNAL'
-    env_to_docker_cmd_opts '--storage-opt' 'DOCKER_STORAGE_OPT_.*'
-    env_to_docker_cmd_opts '--sysctl' 'DOCKER_SYSCTL_.*'
-    env_to_docker_cmd_opts '--tmpfs' 'DOCKER_TMPFS_.*'
-    env_to_docker_cmd_flag '--tty' 'DOCKER_TTY'
-    env_to_docker_cmd_opts '--ulimit' 'DOCKER_ULIMIT_.*'
-    env_to_docker_cmd_opts '--user' 'DOCKER_USER'
-    env_to_docker_cmd_opts '--userns' 'DOCKER_USERNS'
-    env_to_docker_cmd_opts '--uts' 'DOCKER_UTS'
-    env_to_docker_cmd_opts '--volume' 'DOCKER_VOLUME_.*'
-    env_to_docker_cmd_opts '--volume-driver' 'DOCKER_VOLUME_DRIVER'
-    env_to_docker_cmd_opts '--volumes-from' 'DOCKER_VOLUMES_FROM_.*'
-    env_to_docker_cmd_opts '--workdir' 'DOCKER_WORKDIR'
+    env_to_opts 'DOCKER_CMDOPTS' '--add-host' 'DOCKER_ADD_HOST_.*'
+    env_to_flag 'DOCKER_CMDOPTS' '--attach=STDIN' 'DOCKER_ATTACH_STDIN' # TODO: Test an ensure multiple are allowed in this way.
+    env_to_flag 'DOCKER_CMDOPTS' '--attach=STDOUT' 'DOCKER_ATTACH_STDOUT'
+    env_to_flag 'DOCKER_CMDOPTS' '--attach=STDERR' 'DOCKER_ATTACH_STDERR'
+    env_to_opts 'DOCKER_CMDOPTS' '--blkio-weight' 'DOCKER_BLKIO_WEIGHT'
+    env_to_opts 'DOCKER_CMDOPTS' '--blkio-weight-device' 'DOCKER_BLKIO_WEIGHT_DEVICE_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--cap-add' 'DOCKER_CAP_ADD_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--cap-drop' 'DOCKER_CAP_DROP_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--cgroup-parent' 'DOCKER_CGROUP_PARENT'
+    env_to_opts 'DOCKER_CMDOPTS' '--cidfile' 'DOCKER_CIDFILE'
+    # env_to_opts 'DOCKER_CMDOPTS' '--cpu-percent' 'DOCKER_CPU_PERCENT' # Windows Only
+    env_to_opts 'DOCKER_CMDOPTS' '--cpu-period' 'DOCKER_CPU_PERIOD'
+    env_to_opts 'DOCKER_CMDOPTS' '--cpu-quota' 'DOCKER_CPU_QUOTA'
+    env_to_opts 'DOCKER_CMDOPTS' '--cpu-shares' 'DOCKER_CPU_SHARES'
+    env_to_opts 'DOCKER_CMDOPTS' '--cpuset-cpus' 'DOCKER_CPUSET_CPUS'
+    env_to_opts 'DOCKER_CMDOPTS' '--cpuset-mems' 'DOCKER_CPUSET_MEMS'
+    env_to_flag 'DOCKER_CMDOPTS' '--detach' 'DOCKER_DETACH'
+    env_to_opts 'DOCKER_CMDOPTS' '--detach-keys' 'DOCKER_DETACH_KEYS'
+    env_to_opts 'DOCKER_CMDOPTS' '--device' 'DOCKER_DEVICE_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--device-read-bps' 'DOCKER_READ_BPS_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--device-read-iops' 'DOCKER_READ_IOPS_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--device-write-bps' 'DOCKER_WRITE_BPS_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--device-write-iops' 'DOCKER_WRITE_IOPS_.*'
+    env_to_flag 'DOCKER_CMDOPTS' '--disable-content-trust=false' 'DOCKER_CONTENT_TRUST' # Reversed logic since default is true
+    env_to_opts 'DOCKER_CMDOPTS' '--dns' 'DOCKER_DNS'
+    env_to_opts 'DOCKER_CMDOPTS' '--dns' 'DOCKER_DNS_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--dns-opt' 'DOCKER_DNS_OPT_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--dns-search' 'DOCKER_DNS_SEARCH_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--entrypoint' 'DOCKER_ENTRYPOINT'
+    env_to_opts 'DOCKER_CMDOPTS' '--env' 'DOCKER_ENV_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--env-file' 'DOCKER_ENV_FILE'
+    env_to_opts 'DOCKER_CMDOPTS' '--env-file' 'DOCKER_ENV_FILE_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--expose' 'DOCKER_EXPOSE_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--group-add' 'DOCKER_GROUP_ADD_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--health-cmd' 'DOCKER_HEALTH_CMD'
+    env_to_opts 'DOCKER_CMDOPTS' '--health-interval' 'DOCKER_HEALTH_INTERVAL'
+    env_to_opts 'DOCKER_CMDOPTS' '--health-retries' 'DOCKER_HEALTH_RETRIES'
+    env_to_opts 'DOCKER_CMDOPTS' '--health-timeout' 'DOCKER_HEALTH_TIMEOUT'
+    env_to_opts 'DOCKER_CMDOPTS' '--hostname' 'DOCKER_HOSTNAME'
+    env_to_flag 'DOCKER_CMDOPTS' '--interactive' 'DOCKER_INTERACTIVE'
+    # env_to_opts 'DOCKER_CMDOPTS' '--io-maxbandwidth' 'DOCKER_IO_MAXBANDWIDTH' # Windows Only
+    # env_to_opts 'DOCKER_CMDOPTS' '--io-maxiops' 'DOCKER_IO_MAXIOPS' # Windows Only
+    env_to_opts 'DOCKER_CMDOPTS' '--ip' 'DOCKER_IP'
+    env_to_opts 'DOCKER_CMDOPTS' '--ip6' 'DOCKER_IP6'
+    env_to_opts 'DOCKER_CMDOPTS' '--ipc' 'DOCKER_IPC'
+    env_to_flag 'DOCKER_CMDOPTS' '--isolation' 'DOCKER_ISOLATION'
+    env_to_opts 'DOCKER_CMDOPTS' '--kernel-memory' 'DOCKER_KERNEL_MEMORY'
+    env_to_opts 'DOCKER_CMDOPTS' '--label' 'DOCKER_LABEL_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--label-file' 'DOCKER_LABEL_FILE'
+    env_to_opts 'DOCKER_CMDOPTS' '--label-file' 'DOCKER_LABEL_FILE_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--link' 'DOCKER_LINK_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--link-local-ip' 'DOCKER_LINKLOCAL_IP_.*' # _ droped to remove conflict/abiguity
+    env_to_opts 'DOCKER_CMDOPTS' '--log-driver' 'DOCKER_LOG_DRIVER'
+    env_to_opts 'DOCKER_CMDOPTS' '--log-opt' 'DOCKER_LOG_OPT'
+    env_to_opts 'DOCKER_CMDOPTS' '--mac-address' 'DOCKER_MAC_ADDRESS'
+    env_to_opts 'DOCKER_CMDOPTS' '--memory' 'DOCKER_MEMORY'
+    env_to_opts 'DOCKER_CMDOPTS' '--memory-reservation' 'DOCKER_MEMORY_RESERVATION'
+    env_to_opts 'DOCKER_CMDOPTS' '--memory-swap' 'DOCKER_MEMORY_SWAP'
+    env_to_opts 'DOCKER_CMDOPTS' '--memory-swappiness' 'DOCKER_MEMORY_SWAPPINESS'
+    env_to_opts 'DOCKER_CMDOPTS' '--name' 'DOCKER_NAME'
+    env_to_opts 'DOCKER_CMDOPTS' '--network-alias' 'DOCKER_NETWORK_ALIAS_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--net' 'DOCKER_NETWORK'
+    env_to_flag 'DOCKER_CMDOPTS' '--no-healthcheck' 'DOCKER_NO_HEALTHCHECK'
+    env_to_flag 'DOCKER_CMDOPTS' '--oom-kill-disable' 'DOCKER_OOM_KILL_DISABLE'
+    env_to_opts 'DOCKER_CMDOPTS' '--oom-score-adj' 'DOCKER_OOM_SCORE_ADJ'
+    env_to_opts 'DOCKER_CMDOPTS' '--pid' 'DOCKER_PID'
+    env_to_opts 'DOCKER_CMDOPTS' '--pids-limit' 'DOCKER_PIDS_LIMIT'
+    env_to_flag 'DOCKER_CMDOPTS' '--privileged' 'DOCKER_PRIVILEGED'
+    env_to_opts 'DOCKER_CMDOPTS' '--publish' 'DOCKER_PUBLISH_.*'
+    env_to_flag 'DOCKER_CMDOPTS' '--publish-all' 'DOCKER_PUBLISHALL' # _ droped to remove conflict/abiguity
+    env_to_flag 'DOCKER_CMDOPTS' '--read-only' 'DOCKER_READ_ONLY'
+    env_to_opts 'DOCKER_CMDOPTS' '--restart' 'DOCKER_RESTART'
+    env_to_flag 'DOCKER_CMDOPTS' '--rm' 'DOCKER_RM'
+    env_to_opts 'DOCKER_CMDOPTS' '--runtime' 'DOCKER_RUNTIME'
+    env_to_opts 'DOCKER_CMDOPTS' '--security-opt' 'DOCKER_SECURITY_OPT_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--shm-size' 'DOCKER_SHM_SIZE'
+    env_to_flag 'DOCKER_CMDOPTS' '--sig-proxy=false' 'DOCKER_DISABLE_SIG_PROXY' # Reversed logic since default is true
+    env_to_opts 'DOCKER_CMDOPTS' '--stop-signal' 'DOCKER_STOP_SIGNAL'
+    env_to_opts 'DOCKER_CMDOPTS' '--storage-opt' 'DOCKER_STORAGE_OPT_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--sysctl' 'DOCKER_SYSCTL_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--tmpfs' 'DOCKER_TMPFS_.*'
+    env_to_flag 'DOCKER_CMDOPTS' '--tty' 'DOCKER_TTY'
+    env_to_opts 'DOCKER_CMDOPTS' '--ulimit' 'DOCKER_ULIMIT_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--user' 'DOCKER_USER'
+    env_to_opts 'DOCKER_CMDOPTS' '--userns' 'DOCKER_USERNS'
+    env_to_opts 'DOCKER_CMDOPTS' '--uts' 'DOCKER_UTS'
+    env_to_opts 'DOCKER_CMDOPTS' '--volume' 'DOCKER_VOLUME_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--volume-driver' 'DOCKER_VOLUME_DRIVER'
+    env_to_opts 'DOCKER_CMDOPTS' '--volumes-from' 'DOCKER_VOLUMES_FROM_.*'
+    env_to_opts 'DOCKER_CMDOPTS' '--workdir' 'DOCKER_WORKDIR'
     ;;
   network)
+    # Set the sub command
     DOCKER_CMD+=("$1")
     shift
+
+    # Determine what the sub command options are
     case "${DOCKER_CMD[1]}" in
       create)
         # TODO: Support DOCKER_NETWORK_${DOCKER_NETWORK}_*
-        env_to_docker_cmd_opts '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS'
-        env_to_docker_cmd_opts '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS_.*'
-        env_to_docker_cmd_opts '--driver' 'DOCKER_NETWORK_DRIVER'
-        env_to_docker_cmd_opts '--gateway' 'DOCKER_NETWORK_GATEWAY'
-        env_to_docker_cmd_opts '--gateway' 'DOCKER_NETWORK_GATEWAY_.*'
-        env_to_docker_cmd_flag '--internal' 'DOCKER_NETWORK_INTERNAL'
-        env_to_docker_cmd_opts '--ip-range' 'DOCKER_NETWORK_IP_RANGE'
-        env_to_docker_cmd_opts '--ip-range' 'DOCKER_NETWORK_IP_RANGE_.*'
-        env_to_docker_cmd_opts '--ipam-driver' 'DOCKER_NETWORK_IPAM_DRIVER'
-        env_to_docker_cmd_opts '--ipam-opt' 'DOCKER_NETWORK_IPAM_OPT_.*'
-        env_to_docker_cmd_flag '--ipv6' 'DOCKER_NETWORK_IPV6'
-        env_to_docker_cmd_opts '--label' 'DOCKER_NETWORK_LABEL'
-        env_to_docker_cmd_opts '--label' 'DOCKER_NETWORK_LABEL_.*'
-        env_to_docker_cmd_opts '--opt' 'DOCKER_NETWORK_OPT_.*'
-        env_to_docker_cmd_opts '--subnet' 'DOCKER_NETWORK_SUBNET'
-        env_to_docker_cmd_opts '--subnet' 'DOCKER_NETWORK_SUBNET_.*'
+        env_to_opts 'DOCKER_CMDOPTS' '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS'
+        env_to_opts 'DOCKER_CMDOPTS' '--aux-address' 'DOCKER_NETWORK_AUX_ADDRESS_.*'
+        env_to_opts 'DOCKER_CMDOPTS' '--driver' 'DOCKER_NETWORK_DRIVER'
+        env_to_opts 'DOCKER_CMDOPTS' '--gateway' 'DOCKER_NETWORK_GATEWAY'
+        env_to_opts 'DOCKER_CMDOPTS' '--gateway' 'DOCKER_NETWORK_GATEWAY_.*'
+        env_to_flag 'DOCKER_CMDOPTS' '--internal' 'DOCKER_NETWORK_INTERNAL'
+        env_to_opts 'DOCKER_CMDOPTS' '--ip-range' 'DOCKER_NETWORK_IP_RANGE'
+        env_to_opts 'DOCKER_CMDOPTS' '--ip-range' 'DOCKER_NETWORK_IP_RANGE_.*'
+        env_to_opts 'DOCKER_CMDOPTS' '--ipam-driver' 'DOCKER_NETWORK_IPAM_DRIVER'
+        env_to_opts 'DOCKER_CMDOPTS' '--ipam-opt' 'DOCKER_NETWORK_IPAM_OPT_.*'
+        env_to_flag 'DOCKER_CMDOPTS' '--ipv6' 'DOCKER_NETWORK_IPV6'
+        env_to_opts 'DOCKER_CMDOPTS' '--label' 'DOCKER_NETWORK_LABEL'
+        env_to_opts 'DOCKER_CMDOPTS' '--label' 'DOCKER_NETWORK_LABEL_.*'
+        env_to_opts 'DOCKER_CMDOPTS' '--opt' 'DOCKER_NETWORK_OPT_.*'
+        env_to_opts 'DOCKER_CMDOPTS' '--subnet' 'DOCKER_NETWORK_SUBNET'
+        env_to_opts 'DOCKER_CMDOPTS' '--subnet' 'DOCKER_NETWORK_SUBNET_.*'
         ;;
       *)
         >&2 echo "dockenv warning: command not supported, passing to docker as is."
@@ -179,4 +196,4 @@ case "${DOCKER_CMD[0]}" in
     ;;
 esac
 
-exec docker "${DOCKER_CMD[@]}" "${DOCKER_CMDOPTS[@]}" "$@"
+exec docker "${DOCKER_OPTS[@]}" "${DOCKER_CMD[@]}" "${DOCKER_CMDOPTS[@]}" "$@"
